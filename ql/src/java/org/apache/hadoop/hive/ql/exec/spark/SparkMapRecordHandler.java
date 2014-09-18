@@ -21,6 +21,7 @@ package org.apache.hadoop.hive.ql.exec.spark;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.MapOperator;
+import org.apache.hadoop.hive.ql.exec.MapOperatorWithoutTS;
 import org.apache.hadoop.hive.ql.exec.MapredContext;
 import org.apache.hadoop.hive.ql.exec.ObjectCache;
 import org.apache.hadoop.hive.ql.exec.ObjectCacheFactory;
@@ -85,6 +86,8 @@ public class SparkMapRecordHandler extends SparkRecordHandler{
       }
       if (mrwork.getVectorMode()) {
         mo = new VectorMapOperator();
+      } else if (mrwork.getIsMapWithoutTS()) {
+        mo = new MapOperatorWithoutTS();
       } else {
         mo = new MapOperator();
       }

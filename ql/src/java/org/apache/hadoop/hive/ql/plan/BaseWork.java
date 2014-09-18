@@ -56,6 +56,7 @@ public abstract class BaseWork extends AbstractOperatorDesc {
   protected Map<String, Map<Integer, String>> scratchColumnVectorTypes = null;
   protected Map<String, Map<String, Integer>> scratchColumnMap = null;
   protected boolean vectorMode = false;
+  protected boolean isMapWithoutTS = false;
 
   public void setGatheringStats(boolean gatherStats) {
     this.gatheringStats = gatherStats;
@@ -136,6 +137,14 @@ public abstract class BaseWork extends AbstractOperatorDesc {
 
   public boolean getVectorMode() {
     return vectorMode;
+  }
+
+  public void setIsMapWithoutTS(boolean isMapWithoutTS) {
+    this.isMapWithoutTS = isMapWithoutTS;
+  }
+
+  public boolean getIsMapWithoutTS() {
+    return isMapWithoutTS;
   }
 
   public abstract void configureJobConf(JobConf job);

@@ -18,10 +18,10 @@
 
 package org.apache.hadoop.hive.ql.exec.spark;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import com.google.common.base.Preconditions;
@@ -29,6 +29,8 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.Context;
@@ -84,9 +86,58 @@ public class SparkPlanGenerator {
       }
       MapWork mapWork = (MapWork) w;
       JobConf newJobConf = cloneJobConf(mapWork);
-      SparkTran tran = generate(newJobConf, mapWork);
-      JavaPairRDD<BytesWritable, BytesWritable> input = generateRDD(newJobConf, mapWork);
-      trans.addRootTranWithInput(tran, input);
+      SparkTran tran = null;
+      Operator<? extends OperatorDesc> topOp = (Operator<? extends OperatorDesc>)
+          (mapWork.getAllRootOperators().toArray()[0]);
+      if (isOpTreeSplit(topOp)) {
+        // Split the MapWork into three MapWorks
+        // TODO: Assuming the split is two way. Need to generalize for n-split
+
+        // Identify the operator which has the split (or more than one children)
+        Operator<? extends OperatorDesc> splitOp = topOp;
+        while (splitOp.getChildOperators().size() <= 1) {
+          splitOp = splitOp.getChildOperators().get(0);
+        }
+
+        // TODO: NULL checks on splitOp
+
+        List<Operator<?>> children = Utilities.cloneOperatorTree(newJobConf, splitOp.getChildOperators());
+
+        splitOp.setChildOperators(null);
+        for(Operator<?> childOp : children) {
+          childOp.setParentOperators(null);
+        }
+
+        // Now create a MapWork that contains the operator tree up to "splitOp"
+        tran = generate(cloneJobConf(mapWork), mapWork);
+        JavaPairRDD<BytesWritable, BytesWritable> input = generateRDD(newJobConf, mapWork);
+        trans.addRootTranWithInput(tran, input);
+
+        // Create two MapWorks from "children" of "splitOp"
+        MapWork childMapWork1 = Utilities.getMapWork(newJobConf);
+        Map<String, Operator<? extends OperatorDesc>> aliasToWork1 = childMapWork1.getAliasToWork();
+        for(Entry<String, Operator<? extends OperatorDesc>> entry : aliasToWork1.entrySet()) {
+          entry.setValue(children.get(0));
+        }
+        childMapWork1.setIsMapWithoutTS(true);
+
+        MapTran childTran1 = generate(cloneJobConf(childMapWork1), childMapWork1);
+        trans.connect(tran, childTran1);
+
+        MapWork childMapWork2 = Utilities.getMapWork(newJobConf);
+        Map<String, Operator<? extends OperatorDesc>> aliasToWork2 = childMapWork2.getAliasToWork();
+        for(Entry<String, Operator<? extends OperatorDesc>> entry : aliasToWork2.entrySet()) {
+          entry.setValue(children.get(1));
+        }
+        childMapWork2.setIsMapWithoutTS(true);
+
+        MapTran childTran2 = generate(cloneJobConf(childMapWork2), childMapWork2);
+        trans.connect(tran, childTran2);
+      } else {
+        tran = generate(newJobConf, mapWork);
+        JavaPairRDD<BytesWritable, BytesWritable> input = generateRDD(newJobConf, mapWork);
+        trans.addRootTranWithInput(tran, input);
+      }
 
       while (sparkWork.getChildren(w).size() > 0) {
         BaseWork child = sparkWork.getChildren(w).get(0);
@@ -142,6 +193,22 @@ public class SparkPlanGenerator {
     childWorkTrans.clear();
     plan.setTran(trans);
     return plan;
+  }
+
+  private static boolean isOpTreeSplit(Operator<? extends OperatorDesc> topOp) {
+    Operator<? extends OperatorDesc> op = topOp;
+    while (op != null) {
+      List<Operator<? extends OperatorDesc>> children = op.getChildOperators();
+      if (children.size() > 1) {
+        return true;
+      } else if (children.size() == 1) {
+        op = children.get(0);
+      } else {
+        op = null;
+      }
+    }
+
+    return false;
   }
 
   private ReduceTran generateRTWithEdge(SparkWork sparkWork, BaseWork parent, BaseWork child) throws Exception {
