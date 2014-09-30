@@ -116,6 +116,7 @@ import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.mapred.ClusterStatus;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
+import org.eigenbase.rel.RelNode;
 
 public class Driver implements CommandProcessor {
 
@@ -347,6 +348,33 @@ public class Driver implements CommandProcessor {
       ss.setCmd(qs.getCmd());
       ss.setCommandType(qs.getOp());
     }
+  }
+
+  public RelNode getOptiqLogicalPlan(String command) throws Exception {
+    SessionState ss = new SessionState(new HiveConf(SessionState.class));
+    SessionState.start(ss);
+
+    QueryState queryState = new QueryState();
+    saveSession(queryState);
+
+    Context ctx = new Context(conf);
+
+    SessionState.get().initTxnMgr(conf);
+
+    ParseDriver pd = new ParseDriver();
+    ASTNode tree = pd.parse(command, ctx);
+    tree = ParseUtils.findRootNonNullToken(tree);
+
+    BaseSemanticAnalyzer sem = SemanticAnalyzerFactory.get(conf, tree);
+
+    sem.analyze(tree, ctx);
+
+    RelNode relNode = ((SemanticAnalyzer) sem).optiqBasedPlannerStore.getOptiqGenPlanStore();
+
+    restoreSession(queryState);
+    ss.close();
+
+    return relNode;
   }
 
   /**

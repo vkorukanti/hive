@@ -359,6 +359,8 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
   private volatile boolean runCBO = true;
   private volatile boolean disableJoinMerge = false;
 
+  public OptiqBasedPlanner optiqBasedPlannerStore;
+
   /*
    * Capture the CTE definitions in a Query.
    */
@@ -9847,7 +9849,6 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     getMetaData(qb);
     LOG.info("Completed getting MetaData in Semantic Analysis");
 
-
     if (runCBO) {
       boolean tokenTypeIsQuery = ast.getToken().getType() == HiveParser.TOK_QUERY
           || ast.getToken().getType() == HiveParser.TOK_EXPLAIN;
@@ -9856,11 +9857,12 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
           || !canHandleQuery(qb, true) || !HiveOptiqUtil.validateASTForCBO(ast)) {
         runCBO = false;
       }
-
       if (runCBO) {
         disableJoinMerge = true;
       }
     }
+
+    runCBO = true;
 
     // Save the result schema derived from the sink operator produced
     // by genPlan. This has the correct column names, which clients
@@ -9870,6 +9872,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
     if (runCBO) {
       OptiqBasedPlanner optiqPlanner = new OptiqBasedPlanner();
+      this.optiqBasedPlannerStore = optiqPlanner;
       boolean reAnalyzeAST = false;
 
       try {
@@ -12187,13 +12190,14 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     return runOptiqPlanner;
   }
 
-  private class OptiqBasedPlanner implements Frameworks.PlannerAction<RelNode> {
+  public class OptiqBasedPlanner implements Frameworks.PlannerAction<RelNode> {
     RelOptCluster                                         cluster;
     RelOptSchema                                          relOptSchema;
     SemanticException                                     semanticException;
     Map<String, PrunedPartitionList>                      partitionCache;
     AtomicInteger                                         noColsMissingStats = new AtomicInteger(0);
     List<FieldSchema> topLevelFieldSchema;
+    RelNode optiqGenPlanStore;
 
     // TODO: Do we need to keep track of RR, ColNameToPosMap for every op or
     // just last one.
@@ -12220,6 +12224,10 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       return optiqOptimizedAST;
     }
 
+    public RelNode getOptiqGenPlanStore() {
+      return optiqGenPlanStore;
+    }
+
     @Override
     public RelNode apply(RelOptCluster cluster, RelOptSchema relOptSchema, SchemaPlus rootSchema) {
       RelNode optiqGenPlan = null;
@@ -12239,6 +12247,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       try {
         optiqGenPlan = genLogicalPlan(qb);
+        optiqGenPlanStore = optiqGenPlan;
         topLevelFieldSchema = convertRowSchemaToResultSetSchema(relToHiveRR.get(optiqGenPlan),
             HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_RESULTSET_USE_UNIQUE_COLUMN_NAMES));
       } catch (SemanticException e) {

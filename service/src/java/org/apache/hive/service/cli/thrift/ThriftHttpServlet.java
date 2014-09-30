@@ -32,7 +32,7 @@ import org.apache.commons.codec.binary.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hadoop.security.authentication.util.KerberosName;
+// import org.apache.hadoop.security.authentication.util.KerberosName;
 import org.apache.hive.service.auth.AuthenticationProviderFactory;
 import org.apache.hive.service.auth.AuthenticationProviderFactory.AuthMethods;
 import org.apache.hive.service.auth.HiveAuthFactory;
@@ -238,6 +238,7 @@ public class ThriftHttpServlet extends TServlet {
     }
 
     private String getPrincipalWithoutRealm(String fullPrincipal) {
+      /*
       KerberosName fullKerberosName = new KerberosName(fullPrincipal);
       String serviceName = fullKerberosName.getServiceName();
       String hostName =  fullKerberosName.getHostName();
@@ -246,11 +247,14 @@ public class ThriftHttpServlet extends TServlet {
         principalWithoutRealm = serviceName + "/" + hostName;
       }
       return principalWithoutRealm;
+      */
+      return "";
     }
     
     private String getPrincipalWithoutRealmAndHost(String fullPrincipal) {
-      KerberosName fullKerberosName = new KerberosName(fullPrincipal);
-      return fullKerberosName.getServiceName();
+      //KerberosName fullKerberosName = new KerberosName(fullPrincipal);
+      //return fullKerberosName.getServiceName();
+      return "";
     }
   }
 
